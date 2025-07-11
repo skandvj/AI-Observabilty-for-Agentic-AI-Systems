@@ -1,0 +1,4 @@
+{
+  "subject": "[{severity}] Indexing QA Alert: {alert_type}",
+  "body": "\ud83d\udea8 Indexing QA Alert\n\nType: {alert_type}\nSeverity: {severity}\nTime: {timestamp}\n\nMessage: {message}\n\nRecord ID: {record_id}\nTrace ID: {trace_id}\n\nDetails:\n{details}\n\n---\nThis is an automated alert from the Indexing QA system.\nConfigure alerts at: http://localhost:3000/settings\n"
+}

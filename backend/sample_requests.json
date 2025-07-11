@@ -1,0 +1,232 @@
+{
+  "content_ingestion_good": {
+    "record_id": "test_good_001",
+    "content": "This comprehensive guide covers machine learning deployment strategies for enterprise environments. It includes containerization with Docker and Kubernetes, monitoring frameworks like Prometheus and Grafana, CI/CD pipeline integration, model versioning strategies, A/B testing methodologies, and production scaling techniques. The guide provides step-by-step implementation examples, troubleshooting common issues, and best practices derived from Fortune 500 deployments.",
+    "tags": ["machine-learning", "deployment", "enterprise", "devops", "kubernetes", "monitoring"],
+    "source_connector": "confluence",
+    "metadata": {
+      "author": "ML Engineering Team",
+      "department": "Data Science",
+      "document_type": "technical-guide",
+      "file_size": 15680,
+      "language": "en",
+      "created_at": "2024-01-15T10:30:00Z",
+      "last_modified": "2024-01-20T14:45:00Z",
+      "tags_auto_generated": false,
+      "review_status": "pending",
+      "priority": "high"
+    }
+  },
+  
+  "content_ingestion_problematic": {
+    "record_id": "test_bad_001",
+    "content": "document document test test generic content misc information data file",
+    "tags": ["document", "generic", "test", "content", "misc", "general", "data", "information"],
+    "source_connector": "sharepoint",
+    "metadata": {
+      "author": "",
+      "department": "unknown",
+      "document_type": "misc",
+      "file_size": 128,
+      "language": "en"
+    }
+  },
+
+  "rules_engine_test": {
+    "document_text": "Enterprise software development requires careful consideration of scalability, maintainability, and security best practices. This comprehensive guide covers architectural patterns, code review processes, deployment strategies, monitoring solutions, and performance optimization techniques used by leading technology companies.",
+    "tags": ["software-development", "enterprise", "architecture", "best-practices", "scalability"],
+    "source_connector": "confluence"
+  },
+
+  "llm_basic_analysis": {
+    "content": "API documentation for the user authentication service. This service handles user login, registration, password reset, and session management. It supports OAuth 2.0, JWT tokens, and multi-factor authentication. The API follows RESTful conventions and includes rate limiting, error handling, and comprehensive logging.",
+    "tags": ["api", "authentication", "security", "documentation"],
+    "context": {
+      "source": "confluence",
+      "author": "Backend Team", 
+      "department": "Engineering",
+      "document_type": "api-documentation"
+    }
+  },
+
+  "custom_llm_analysis": {
+    "content": "Marketing strategy for Q1 2024 focusing on digital transformation initiatives. The strategy includes social media campaigns, content marketing, influencer partnerships, and data-driven customer acquisition. Budget allocation covers paid advertising, creative development, and analytics tools.",
+    "tags": ["marketing", "strategy", "digital-transformation", "Q1-2024"],
+    "custom_prompt": "You are a business strategy expert. Analyze this {{content}} with tags {{tags}} for strategic clarity, actionable insights, and business value. Focus on:\n1. Strategic alignment and clarity\n2. Actionable implementation details\n3. Measurable business outcomes\n4. Risk assessment and mitigation\n\nProvide specific recommendations for improvement.",
+    "constraints": [
+      {
+        "id": "strategic_clarity",
+        "name": "Strategic Clarity",
+        "description": "Strategy should have clear objectives and success metrics",
+        "enabled": true,
+        "weight": 0.3,
+        "rule": "Strategy must include specific goals, timelines, and KPIs"
+      },
+      {
+        "id": "actionability",
+        "name": "Actionable Insights", 
+        "description": "Content should provide specific next steps and implementation guidance",
+        "enabled": true,
+        "weight": 0.25,
+        "rule": "Include specific tasks, responsibilities, and deadlines"
+      },
+      {
+        "id": "business_impact",
+        "name": "Business Impact",
+        "description": "Strategy should clearly articulate expected business outcomes",
+        "enabled": true,
+        "weight": 0.25,
+        "rule": "Quantify expected ROI, revenue impact, or cost savings"
+      },
+      {
+        "id": "risk_assessment",
+        "name": "Risk Assessment",
+        "description": "Strategy should identify and address potential risks",
+        "enabled": true,
+        "weight": 0.2,
+        "rule": "Identify key risks and mitigation strategies"
+      }
+    ],
+    "quality_weights": {
+      "strategic_clarity": 0.3,
+      "actionability": 0.25,
+      "business_impact": 0.25,
+      "risk_assessment": 0.2
+    },
+    "context": {
+      "source": "strategy-docs",
+      "department": "Marketing",
+      "document_type": "strategy",
+      "review_deadline": "2024-02-01"
+    }
+  },
+
+  "chain_of_thought_analysis": {
+    "content": "Database migration plan for moving from legacy MySQL to cloud-native PostgreSQL. The plan includes data mapping, migration scripts, testing procedures, rollback strategies, and performance benchmarking. Migration will be executed in phases with minimal downtime.",
+    "tags": ["database", "migration", "postgresql", "cloud", "infrastructure"],
+    "custom_prompt": "Analyze this technical migration plan step by step for completeness, risk assessment, and implementation feasibility.",
+    "constraints": [
+      {
+        "id": "technical_completeness",
+        "name": "Technical Completeness",
+        "description": "Plan should cover all technical aspects thoroughly",
+        "enabled": true,
+        "weight": 0.4,
+        "rule": "Include detailed technical specifications and procedures"
+      },
+      {
+        "id": "risk_mitigation",
+        "name": "Risk Mitigation",
+        "description": "Plan should identify and address potential risks",
+        "enabled": true,
+        "weight": 0.3,
+        "rule": "Include contingency plans and rollback procedures"
+      },
+      {
+        "id": "implementation_clarity",
+        "name": "Implementation Clarity",
+        "description": "Plan should have clear implementation steps",
+        "enabled": true,
+        "weight": 0.3,
+        "rule": "Provide step-by-step implementation guide with timelines"
+      }
+    ],
+    "quality_weights": {
+      "technical_completeness": 0.4,
+      "risk_mitigation": 0.3,
+      "implementation_clarity": 0.3
+    }
+  },
+
+  "self_consistency_analysis": {
+    "content": "Customer support chatbot implementation using natural language processing and machine learning. The bot handles common queries, escalates complex issues to human agents, and learns from interactions to improve responses over time.",
+    "tags": ["chatbot", "nlp", "machine-learning", "customer-support"],
+    "custom_prompt": "Evaluate this AI implementation plan for technical feasibility, user experience, and business value.",
+    "constraints": [
+      {
+        "id": "technical_feasibility",
+        "name": "Technical Feasibility",
+        "description": "Implementation should be technically sound and achievable",
+        "enabled": true,
+        "weight": 0.4,
+        "rule": "Use proven technologies and realistic timelines"
+      },
+      {
+        "id": "user_experience",
+        "name": "User Experience",
+        "description": "Solution should provide excellent user experience",
+        "enabled": true,
+        "weight": 0.35,
+        "rule": "Focus on user needs and interaction quality"
+      },
+      {
+        "id": "business_value",
+        "name": "Business Value",
+        "description": "Implementation should deliver clear business benefits",
+        "enabled": true,
+        "weight": 0.25,
+        "rule": "Quantify cost savings and efficiency improvements"
+      }
+    ],
+    "quality_weights": {
+      "technical_feasibility": 0.4,
+      "user_experience": 0.35,
+      "business_value": 0.25
+    },
+    "context": {
+      "iterations": 4,
+      "department": "Product",
+      "priority": "high"
+    }
+  },
+
+  "redteam_generic_tags": {
+    "scenario_id": "generic_tags_attack",
+    "content": "This document contains important information about our company processes and procedures for handling various business operations and general activities.",
+    "tags": ["document", "important", "information", "company", "general", "business", "misc", "data", "content", "file"],
+    "test_objectives": ["Detect generic tags", "Flag low-quality content", "Identify content-tag mismatch"],
+    "expected_issues": ["Generic tags detected", "Low content specificity", "Minimal business value"]
+  },
+
+  "redteam_content_mismatch": {
+    "scenario_id": "tag_content_mismatch", 
+    "content": "Recipe for chocolate chip cookies: Preheat oven to 350°F. Mix 2 cups flour, 1 cup butter, 1/2 cup sugar, 2 eggs, and 1 cup chocolate chips. Bake for 12-15 minutes until golden brown. Cool before serving.",
+    "tags": ["machine-learning", "artificial-intelligence", "deep-learning", "neural-networks", "data-science"],
+    "test_objectives": ["Detect tag-content mismatch", "Identify irrelevant tags"],
+    "expected_issues": ["Tag-content mismatch", "Irrelevant tags", "Content categorization error"]
+  },
+
+  "redteam_minimal_content": {
+    "scenario_id": "minimal_content",
+    "content": "Good job everyone!",
+    "tags": ["comprehensive-analysis", "detailed-documentation", "best-practices", "strategic-planning", "implementation-guide"],
+    "test_objectives": ["Detect insufficient content", "Flag over-tagging"],
+    "expected_issues": ["Insufficient content length", "Over-tagging", "Content-tag imbalance"]
+  },
+
+  "redteam_spam_content": {
+    "scenario_id": "spam_content",
+    "content": "Lorem ipsum dolor sit amet test test test document document document placeholder content sample text example dummy data dummy data sample sample.",
+    "tags": ["lorem-ipsum", "test", "placeholder", "sample", "dummy"],
+    "test_objectives": ["Detect spam content", "Identify placeholder text"],
+    "expected_issues": ["Spam content detected", "Placeholder text", "Low content quality"]
+  },
+
+  "redteam_over_tagging": {
+    "scenario_id": "over_tagging", 
+    "content": "Meeting scheduled for Tuesday at 2 PM.",
+    "tags": ["meeting", "schedule", "tuesday", "calendar", "appointment", "business", "work", "office", "corporate", "planning", "organization", "time-management", "productivity", "team", "collaboration", "coordination", "professional", "workplace"],
+    "test_objectives": ["Detect excessive tagging", "Flag tag spam"],
+    "expected_issues": ["Excessive tagging", "Tag spam", "Poor tag-to-content ratio"]
+  },
+
+  "evaluation_prompts": {
+    "technical_content": "You are a senior software architect. Analyze this {{content}} with tags {{tags}} for technical depth, implementation feasibility, and architectural soundness. Rate on: 1) Technical accuracy 2) Implementation clarity 3) Scalability considerations 4) Security implications",
+    
+    "business_content": "You are a business strategy consultant. Evaluate this {{content}} with tags {{tags}} for strategic value, actionability, and business impact. Focus on: 1) Strategic alignment 2) Market relevance 3) Implementation roadmap 4) ROI potential",
+    
+    "compliance_content": "You are a compliance expert. Review this {{content}} with tags {{tags}} for regulatory adherence, risk assessment, and documentation completeness. Evaluate: 1) Regulatory compliance 2) Risk identification 3) Documentation quality 4) Audit readiness",
+    
+    "user_experience": "You are a UX design expert. Assess this {{content}} with tags {{tags}} for user-centricity, usability, and design thinking. Consider: 1) User needs alignment 2) Usability principles 3) Accessibility standards 4) Design rationale"
+  }
+} 

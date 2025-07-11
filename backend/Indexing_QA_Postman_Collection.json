@@ -1,0 +1,354 @@
+{
+  "info": {
+    "name": "Indexing QA - API Testing Collection",
+    "description": "Complete API collection for testing the Indexing QA Observability Tool with Rules Engine and LLM Judge",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "System Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "System Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/metrics",
+              "host": ["{{base_url}}"],
+              "path": ["metrics"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Content Ingestion",
+      "item": [
+        {
+          "name": "Ingest Good Content",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"record_id\": \"test_good_001\",\n  \"content\": \"This comprehensive guide covers machine learning deployment strategies for enterprise environments. It includes containerization with Docker and Kubernetes, monitoring frameworks like Prometheus and Grafana, CI/CD pipeline integration, model versioning strategies, A/B testing methodologies, and production scaling techniques. The guide provides step-by-step implementation examples, troubleshooting common issues, and best practices derived from Fortune 500 deployments.\",\n  \"tags\": [\"machine-learning\", \"deployment\", \"enterprise\", \"devops\", \"kubernetes\", \"monitoring\"],\n  \"source_connector\": \"confluence\",\n  \"metadata\": {\n    \"author\": \"ML Engineering Team\",\n    \"department\": \"Data Science\",\n    \"document_type\": \"technical-guide\",\n    \"file_size\": 15680,\n    \"language\": \"en\",\n    \"created_at\": \"2024-01-15T10:30:00Z\",\n    \"last_modified\": \"2024-01-20T14:45:00Z\",\n    \"tags_auto_generated\": false,\n    \"review_status\": \"pending\",\n    \"priority\": \"high\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ingest Problematic Content",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"record_id\": \"test_bad_001\",\n  \"content\": \"document document test test generic content misc information data file\",\n  \"tags\": [\"document\", \"generic\", \"test\", \"content\", \"misc\", \"general\", \"data\", \"information\"],\n  \"source_connector\": \"sharepoint\",\n  \"metadata\": {\n    \"author\": \"\",\n    \"department\": \"unknown\",\n    \"document_type\": \"misc\",\n    \"file_size\": 128,\n    \"language\": \"en\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Rules Engine",
+      "item": [
+        {
+          "name": "Check Good Content",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"Enterprise software development requires careful consideration of scalability, maintainability, and security best practices. This comprehensive guide covers architectural patterns, code review processes, deployment strategies, monitoring solutions, and performance optimization techniques used by leading technology companies.\",\n  \"tags\": [\"software-development\", \"enterprise\", \"architecture\", \"best-practices\", \"scalability\"],\n  \"source_connector\": \"confluence\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check Problematic Content",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"document content information data file general misc\",\n  \"tags\": [\"document\", \"content\", \"information\", \"data\", \"file\", \"general\", \"misc\", \"test\"],\n  \"source_connector\": \"sharepoint\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "LLM Analysis",
+      "item": [
+        {
+          "name": "Basic LLM Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"API documentation for the user authentication service. This service handles user login, registration, password reset, and session management. It supports OAuth 2.0, JWT tokens, and multi-factor authentication. The API follows RESTful conventions and includes rate limiting, error handling, and comprehensive logging.\",\n  \"tags\": [\"api\", \"authentication\", \"security\", \"documentation\"],\n  \"context\": {\n    \"source\": \"confluence\",\n    \"author\": \"Backend Team\",\n    \"department\": \"Engineering\",\n    \"document_type\": \"api-documentation\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/analyze",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "analyze"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Custom LLM Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Marketing strategy for Q1 2024 focusing on digital transformation initiatives. The strategy includes social media campaigns, content marketing, influencer partnerships, and data-driven customer acquisition. Budget allocation covers paid advertising, creative development, and analytics tools.\",\n  \"tags\": [\"marketing\", \"strategy\", \"digital-transformation\", \"Q1-2024\"],\n  \"custom_prompt\": \"You are a business strategy expert. Analyze this {{content}} with tags {{tags}} for strategic clarity, actionable insights, and business value. Focus on:\\n1. Strategic alignment and clarity\\n2. Actionable implementation details\\n3. Measurable business outcomes\\n4. Risk assessment and mitigation\\n\\nProvide specific recommendations for improvement.\",\n  \"constraints\": [\n    {\n      \"id\": \"strategic_clarity\",\n      \"name\": \"Strategic Clarity\",\n      \"description\": \"Strategy should have clear objectives and success metrics\",\n      \"enabled\": true,\n      \"weight\": 0.3,\n      \"rule\": \"Strategy must include specific goals, timelines, and KPIs\"\n    },\n    {\n      \"id\": \"actionability\",\n      \"name\": \"Actionable Insights\",\n      \"description\": \"Content should provide specific next steps and implementation guidance\",\n      \"enabled\": true,\n      \"weight\": 0.25,\n      \"rule\": \"Include specific tasks, responsibilities, and deadlines\"\n    }\n  ],\n  \"quality_weights\": {\n    \"strategic_clarity\": 0.3,\n    \"actionability\": 0.25,\n    \"business_impact\": 0.25,\n    \"risk_assessment\": 0.2\n  },\n  \"context\": {\n    \"source\": \"strategy-docs\",\n    \"department\": \"Marketing\",\n    \"document_type\": \"strategy\",\n    \"review_deadline\": \"2024-02-01\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/analyze-custom",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "analyze-custom"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Chain of Thought Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Database migration plan for moving from legacy MySQL to cloud-native PostgreSQL. The plan includes data mapping, migration scripts, testing procedures, rollback strategies, and performance benchmarking. Migration will be executed in phases with minimal downtime.\",\n  \"tags\": [\"database\", \"migration\", \"postgresql\", \"cloud\", \"infrastructure\"],\n  \"custom_prompt\": \"Analyze this technical migration plan step by step for completeness, risk assessment, and implementation feasibility.\",\n  \"constraints\": [\n    {\n      \"id\": \"technical_completeness\",\n      \"name\": \"Technical Completeness\",\n      \"description\": \"Plan should cover all technical aspects thoroughly\",\n      \"enabled\": true,\n      \"weight\": 0.4,\n      \"rule\": \"Include detailed technical specifications and procedures\"\n    },\n    {\n      \"id\": \"risk_mitigation\",\n      \"name\": \"Risk Mitigation\",\n      \"description\": \"Plan should identify and address potential risks\",\n      \"enabled\": true,\n      \"weight\": 0.3,\n      \"rule\": \"Include contingency plans and rollback procedures\"\n    }\n  ],\n  \"quality_weights\": {\n    \"technical_completeness\": 0.4,\n    \"risk_mitigation\": 0.3,\n    \"implementation_clarity\": 0.3\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/analyze-cot",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "analyze-cot"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Self-Consistency Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Customer support chatbot implementation using natural language processing and machine learning. The bot handles common queries, escalates complex issues to human agents, and learns from interactions to improve responses over time.\",\n  \"tags\": [\"chatbot\", \"nlp\", \"machine-learning\", \"customer-support\"],\n  \"custom_prompt\": \"Evaluate this AI implementation plan for technical feasibility, user experience, and business value.\",\n  \"constraints\": [\n    {\n      \"id\": \"technical_feasibility\",\n      \"name\": \"Technical Feasibility\",\n      \"description\": \"Implementation should be technically sound and achievable\",\n      \"enabled\": true,\n      \"weight\": 0.4,\n      \"rule\": \"Use proven technologies and realistic timelines\"\n    },\n    {\n      \"id\": \"user_experience\",\n      \"name\": \"User Experience\",\n      \"description\": \"Solution should provide excellent user experience\",\n      \"enabled\": true,\n      \"weight\": 0.35,\n      \"rule\": \"Focus on user needs and interaction quality\"\n    }\n  ],\n  \"quality_weights\": {\n    \"technical_feasibility\": 0.4,\n    \"user_experience\": 0.35,\n    \"business_value\": 0.25\n  },\n  \"context\": {\n    \"iterations\": 4,\n    \"department\": \"Product\",\n    \"priority\": \"high\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/llm/analyze-self-consistency",
+              "host": ["{{base_url}}"],
+              "path": ["llm", "analyze-self-consistency"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Red Team Testing",
+      "item": [
+        {
+          "name": "Generic Tags Attack",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"This document contains important information about our company processes and procedures for handling various business operations and general activities.\",\n  \"tags\": [\"document\", \"important\", \"information\", \"company\", \"general\", \"business\", \"misc\", \"data\", \"content\", \"file\"],\n  \"source_connector\": \"sharepoint\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Content-Tag Mismatch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"Recipe for chocolate chip cookies: Preheat oven to 350°F. Mix 2 cups flour, 1 cup butter, 1/2 cup sugar, 2 eggs, and 1 cup chocolate chips. Bake for 12-15 minutes until golden brown. Cool before serving.\",\n  \"tags\": [\"machine-learning\", \"artificial-intelligence\", \"deep-learning\", \"neural-networks\", \"data-science\"],\n  \"source_connector\": \"confluence\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Minimal Content Over-Tagging",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"Good job everyone!\",\n  \"tags\": [\"comprehensive-analysis\", \"detailed-documentation\", \"best-practices\", \"strategic-planning\", \"implementation-guide\"],\n  \"source_connector\": \"slack\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Spam Content Detection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"Lorem ipsum dolor sit amet test test test document document document placeholder content sample text example dummy data dummy data sample sample.\",\n  \"tags\": [\"lorem-ipsum\", \"test\", \"placeholder\", \"sample\", \"dummy\"],\n  \"source_connector\": \"sharepoint\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Extreme Over-Tagging",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_text\": \"Meeting scheduled for Tuesday at 2 PM.\",\n  \"tags\": [\"meeting\", \"schedule\", \"tuesday\", \"calendar\", \"appointment\", \"business\", \"work\", \"office\", \"corporate\", \"planning\", \"organization\", \"time-management\", \"productivity\", \"team\", \"collaboration\", \"coordination\", \"professional\", \"workplace\"],\n  \"source_connector\": \"outlook\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/rules/check",
+              "host": ["{{base_url}}"],
+              "path": ["rules", "check"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+} 

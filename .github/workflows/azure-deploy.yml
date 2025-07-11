@@ -1,0 +1,432 @@
+name: Azure Deployment - Indexing QA Observability Tool
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - prod
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  PYTHON_VERSION: '3.11'
+
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
+
+jobs:
+  # Code Quality and Security Checks
+  quality-checks:
+    runs-on: ubuntu-latest
+    name: Code Quality & Security
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install black isort mypy pytest-cov bandit safety
+        
+    - name: Code formatting check (Black)
+      run: black --check --diff .
+      
+    - name: Import sorting check (isort)
+      run: isort --check-only --diff .
+      
+    - name: Type checking (MyPy)
+      run: mypy . --ignore-missing-imports --no-strict-optional
+      
+    - name: Security scan (Bandit)
+      run: bandit -r . -f json -o bandit-report.json || true
+      
+    - name: Dependency vulnerability check (Safety)
+      run: safety check --json --output safety-report.json || true
+      
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # Unit and Integration Tests
+  test:
+    runs-on: ubuntu-latest
+    name: Test Suite
+    needs: quality-checks
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set up test environment
+      run: |
+        cp .env.example .env.test
+        echo "DATABASE_URL=postgresql://testuser:testpassword@localhost:5432/testdb" >> .env.test
+        echo "ENVIRONMENT=test" >> .env.test
+        
+    - name: Run database migrations
+      run: |
+        export ENV_FILE=.env.test
+        python -c "from database import create_tables; create_tables()"
+        
+    - name: Run unit tests
+      run: |
+        export ENV_FILE=.env.test
+        python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+        
+    - name: Upload test coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: coverage-reports
+        path: |
+          coverage.xml
+          htmlcov/
+
+  # Infrastructure Validation
+  infrastructure-validation:
+    runs-on: ubuntu-latest
+    name: Infrastructure Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Azure CLI Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Validate ARM Template
+      uses: azure/arm-deploy@v1
+      with:
+        scope: resourcegroup
+        resourceGroupName: ${{ secrets.AZURE_RG_NAME }}
+        template: ./deploy/azure-template.json
+        deploymentMode: Validate
+        parameters: >
+          projectName="indexing-qa-obs"
+          environment="staging"
+          sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
+          anthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+          slackWebhookUrl="${{ secrets.SLACK_WEBHOOK_URL }}"
+
+  # Build and Package
+  build:
+    runs-on: ubuntu-latest
+    name: Build Package
+    needs: [test, infrastructure-validation]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create deployment package
+      run: |
+        # Create function app structure
+        mkdir -p deployment_package
+        
+        # Copy application files
+        cp -r *.py deployment_package/
+        cp requirements.txt deployment_package/
+        cp host.json deployment_package/ 2>/dev/null || echo '{"version": "2.0", "extensionBundle": {"id": "Microsoft.Azure.Functions.ExtensionBundle", "version": "[4.*, 5.0.0)"}}' > deployment_package/host.json
+        cp local.settings.json deployment_package/ 2>/dev/null || echo '{"IsEncrypted": false, "Values": {"AzureWebJobsStorage": "", "FUNCTIONS_WORKER_RUNTIME": "python"}}' > deployment_package/local.settings.json
+        
+        # Create function.json for each function
+        mkdir -p deployment_package/hourly_quality_monitoring
+        echo '{"scriptFile": "azure_functions.py", "entryPoint": "hourly_quality_monitoring", "bindings": [{"name": "timer", "type": "timerTrigger", "direction": "in", "schedule": "0 0 * * * *"}]}' > deployment_package/hourly_quality_monitoring/function.json
+        
+        mkdir -p deployment_package/daily_learning_cycle  
+        echo '{"scriptFile": "azure_functions.py", "entryPoint": "daily_learning_cycle", "bindings": [{"name": "timer", "type": "timerTrigger", "direction": "in", "schedule": "0 0 8 * * *"}]}' > deployment_package/daily_learning_cycle/function.json
+        
+        mkdir -p deployment_package/system_health_check
+        echo '{"scriptFile": "azure_functions.py", "entryPoint": "system_health_check", "bindings": [{"name": "req", "type": "httpTrigger", "direction": "in", "authLevel": "anonymous", "methods": ["get"]}, {"name": "$return", "type": "http", "direction": "out"}]}' > deployment_package/system_health_check/function.json
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: function-app-package
+        path: deployment_package/
+
+  # Deploy to Staging
+  deploy-staging:
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    needs: build
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: function-app-package
+        path: ./deployment_package
+        
+    - name: Azure CLI Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Deploy Infrastructure
+      uses: azure/arm-deploy@v1
+      id: infrastructure
+      with:
+        scope: resourcegroup
+        resourceGroupName: ${{ secrets.AZURE_RG_NAME_STAGING }}
+        template: ./deploy/azure-template.json
+        parameters: >
+          projectName="indexing-qa-obs"
+          environment="staging"
+          sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
+          anthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+          slackWebhookUrl="${{ secrets.SLACK_WEBHOOK_URL }}"
+          
+    - name: Deploy Function App
+      uses: azure/functions-action@v1
+      with:
+        app-name: ${{ steps.infrastructure.outputs.functionAppName }}
+        package: ./deployment_package
+        
+    - name: Run Database Migrations
+      run: |
+        # Set up environment for migrations
+        export DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}"
+        export ENVIRONMENT="staging"
+        
+        # Install dependencies locally for migration
+        pip install sqlalchemy alembic
+        
+        # Run migrations
+        python -c "
+        from database import create_tables, get_db_context
+        create_tables()
+        print('Database tables created successfully')
+        "
+        
+    - name: Health Check
+      run: |
+        sleep 30  # Wait for deployment to complete
+        
+        HEALTH_URL="${{ steps.infrastructure.outputs.functionAppUrl }}/api/health"
+        
+        for i in {1..5}; do
+          if curl -f "$HEALTH_URL"; then
+            echo "Health check passed"
+            exit 0
+          fi
+          echo "Health check attempt $i failed, retrying..."
+          sleep 10
+        done
+        
+        echo "Health check failed after 5 attempts"
+        exit 1
+
+  # Deploy to Production
+  deploy-production:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: build
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    environment: production
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: function-app-package
+        path: ./deployment_package
+        
+    - name: Azure CLI Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Deploy Infrastructure
+      uses: azure/arm-deploy@v1
+      id: infrastructure
+      with:
+        scope: resourcegroup
+        resourceGroupName: ${{ secrets.AZURE_RG_NAME_PROD }}
+        template: ./deploy/azure-template.json
+        parameters: >
+          projectName="indexing-qa-obs"
+          environment="prod"
+          sqlAdminPassword="${{ secrets.SQL_ADMIN_PASSWORD }}"
+          openaiApiKey="${{ secrets.OPENAI_API_KEY }}"
+          anthropicApiKey="${{ secrets.ANTHROPIC_API_KEY }}"
+          slackWebhookUrl="${{ secrets.SLACK_WEBHOOK_URL }}"
+          costBudgetLimit=2000
+          
+    - name: Deploy Function App
+      uses: azure/functions-action@v1
+      with:
+        app-name: ${{ steps.infrastructure.outputs.functionAppName }}
+        package: ./deployment_package
+        
+    - name: Run Database Migrations
+      run: |
+        export DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}"
+        export ENVIRONMENT="prod"
+        
+        pip install sqlalchemy alembic
+        
+        python -c "
+        from database import create_tables
+        create_tables()
+        print('Production database tables created successfully')
+        "
+        
+    - name: Production Health Check
+      run: |
+        sleep 60  # Wait longer for production deployment
+        
+        HEALTH_URL="${{ steps.infrastructure.outputs.functionAppUrl }}/api/health"
+        
+        for i in {1..10}; do
+          if curl -f "$HEALTH_URL"; then
+            echo "Production health check passed"
+            exit 0
+          fi
+          echo "Health check attempt $i failed, retrying..."
+          sleep 15
+        done
+        
+        echo "Production health check failed"
+        exit 1
+        
+    - name: Post-deployment verification
+      run: |
+        # Test critical endpoints
+        BASE_URL="${{ steps.infrastructure.outputs.functionAppUrl }}"
+        
+        echo "Testing system health endpoint..."
+        curl -f "$BASE_URL/api/health" || exit 1
+        
+        echo "All post-deployment checks passed!"
+
+  # Monitoring and Notifications
+  notify:
+    runs-on: ubuntu-latest
+    name: Deployment Notifications
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    
+    steps:
+    - name: Notify Slack - Success
+      if: needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success'
+      run: |
+        ENVIRONMENT=""
+        if [[ "${{ needs.deploy-staging.result }}" == "success" ]]; then
+          ENVIRONMENT="staging"
+        elif [[ "${{ needs.deploy-production.result }}" == "success" ]]; then
+          ENVIRONMENT="production"
+        fi
+        
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"✅ Indexing QA Observability Tool successfully deployed to $ENVIRONMENT\n📊 Commit: ${{ github.sha }}\n🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+    - name: Notify Slack - Failure
+      if: needs.deploy-staging.result == 'failure' || needs.deploy-production.result == 'failure'
+      run: |
+        ENVIRONMENT=""
+        if [[ "${{ needs.deploy-staging.result }}" == "failure" ]]; then
+          ENVIRONMENT="staging"
+        elif [[ "${{ needs.deploy-production.result }}" == "failure" ]]; then
+          ENVIRONMENT="production"
+        fi
+        
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"❌ Indexing QA Observability Tool deployment to $ENVIRONMENT FAILED\n📊 Commit: ${{ github.sha }}\n🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n⚠️ Please check the logs and fix the issues.\"}" \
+          ${{ secrets.SLACK_WEBHOOK_URL }} 
