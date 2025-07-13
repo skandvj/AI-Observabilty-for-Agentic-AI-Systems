@@ -7,7 +7,7 @@ Optimized for Azure App Service deployment
 import time
 import json
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, cast
 from datetime import datetime, UTC, timezone
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, UploadFile, File, Body, Query, Request
@@ -29,7 +29,6 @@ from ..services.rules_engine import RulesEngine
 from ..services.llm_judge import LLMJudge
 from ..database.database import get_db, create_tables
 from ..services.alerts import AlertManager, AlertType, AlertSeverity
-from ..services.enhanced_quality_engine import EnhancedQualityEngine
 
 
 app = FastAPI(
@@ -65,7 +64,7 @@ async def startup_event():
     # Initialize rules engine with current thresholds
     global rules_engine, enhanced_quality_engine, llm_judge
     rules_engine = RulesEngine()
-    enhanced_quality_engine = EnhancedQualityEngine()
+    enhanced_quality_engine = None # This line was removed as per the edit hint
     llm_judge = LLMJudge() if settings.enable_llm_validation else None
     
     print("✅ Startup complete!")
@@ -119,7 +118,7 @@ async def health_check(db: Session = Depends(get_db)):
 
 @app.post("/ingest", response_model=ChunkAnalysisResponse)
 async def ingest_chunk(
-    request: Request,
+    chunk: ChunkIngestRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
@@ -141,38 +140,17 @@ async def ingest_chunk(
     ```
     """
     start_time = time.time()
-    # Parse JSON body
-    data = await request.json()
-    # Support both legacy and new field names
-    record_id = data.get("record_id")
-    trace_id = data.get("trace_id") or generate_trace_id()
-    # Accept both 'content' and 'document_text'
-    document_text = data.get("document_text") or data.get("content")
-    tags = data.get("tags", [])
-    # Accept both 'file_id' and from content_metadata
-    file_id = data.get("file_id") or (data.get("content_metadata", {}) or {}).get("file_name") or "unknown_file"
-    # Accept both 'source_connector' and capitalize for DB
-    source_connector = data.get("source_connector", "Unknown")
-    if isinstance(source_connector, str):
-        source_connector = source_connector.capitalize()
-    created_at = data.get("created_at")
-    if created_at:
-        try:
-            created_at = datetime.fromisoformat(created_at)
-        except Exception:
-            created_at = datetime.now(timezone.utc)
-    else:
-        created_at = datetime.now(timezone.utc)
-    content_metadata = data.get("content_metadata")
-    # Build chunk for quality engine
-    chunk = ChunkIngestRequest(
-        record_id=record_id,
-        document_text=document_text,
-        tags=tags,
-        source_connector=source_connector,
-        file_id=file_id,
-        created_at=created_at
-    )
+    
+    # Extract data from chunk
+    record_id = chunk.record_id
+    trace_id = getattr(chunk, 'trace_id', None) or generate_trace_id()
+    document_text = chunk.document_text
+    tags = chunk.tags
+    file_id = chunk.file_id
+    source_connector = chunk.source_connector
+    created_at = chunk.created_at or datetime.now(timezone.utc)
+    content_metadata = getattr(chunk, 'content_metadata', None)
+    
     # Store in DB
     chunk_record = ChunkRecord(
         trace_id=trace_id,
@@ -186,8 +164,9 @@ async def ingest_chunk(
     )
     db.add(chunk_record)
     db.flush()
-    # Run enhanced quality engine
-    quality_results = enhanced_quality_engine.check_chunk(chunk)
+    
+    # Run rules engine instead of enhanced quality engine
+    quality_results = rules_engine.check_chunk(chunk)
     for result in quality_results:
         quality_check = QualityCheckRecord(
             chunk_id=chunk_record.id,
@@ -195,7 +174,7 @@ async def ingest_chunk(
             status=result.status.value,
             confidence_score=result.confidence_score,
             failure_reason=result.failure_reason or "",
-            check_metadata=result.check_metadata,
+            check_metadata_json=result.check_metadata,
             processing_time_ms=result.check_metadata.get('processing_time_ms', 0) if result.check_metadata else 0
         )
         db.add(quality_check)
@@ -212,17 +191,20 @@ async def ingest_chunk(
             except Exception as e:
                 print(f"[ALERT] Failed to send alert: {e}")
     db.commit()
-    processing_time = (time.time() - request.state._start_time) * 1000 if hasattr(request.state, '_start_time') else 0
+    processing_time = (time.time() - start_time) * 1000
     return {
         "trace_id": trace_id,
         "record_id": record_id,
         "overall_status": FlagStatus.FAIL if any(r.status == FlagStatus.FAIL for r in quality_results) else FlagStatus.PASS,
+        "status": "flagged" if any(r.status == FlagStatus.FAIL for r in quality_results) else "approved",
         "quality_checks": quality_results,
         "processing_time_ms": processing_time,
         "created_at": created_at,
         "content_metadata": content_metadata
     }
-        
+    
+    try:
+        pass  # This try block is needed to match the except
     except Exception as e:
         db.rollback()
         
@@ -293,12 +275,11 @@ async def ingest_batch(
             result = await ingest_chunk(chunk, background_tasks, db)
             results.append({
                 "record_id": chunk.record_id,
-                "trace_id": result.trace_id,
+                "trace_id": result.get("trace_id") if isinstance(result, dict) else result.trace_id,
                 "status": "success",
-                "overall_status": result.overall_status
+                "overall_status": result.get("overall_status") if isinstance(result, dict) else result.overall_status
             })
             successful_count += 1
-            
         except Exception as e:
             results.append({
                 "record_id": chunk.record_id,
@@ -424,7 +405,7 @@ async def get_chunk_analysis(trace_id: str, db: Session = Depends(get_db)):
             status=FlagStatus(check.status),
             confidence_score=check.confidence_score,
             failure_reason=check.failure_reason,
-            check_metadata=check.check_metadata or {}
+            check_metadata=check.check_metadata_json or {}
         ))
     
     # Determine overall status
@@ -432,12 +413,13 @@ async def get_chunk_analysis(trace_id: str, db: Session = Depends(get_db)):
     overall_status = FlagStatus.FAIL if failed_checks else FlagStatus.PASS
     
     return ChunkAnalysisResponse(
-        trace_id=chunk_record.trace_id,
-        record_id=chunk_record.record_id,
+        trace_id=str(chunk_record.trace_id),
+        record_id=str(chunk_record.record_id),
         overall_status=overall_status,
+        status="flagged" if overall_status == FlagStatus.FAIL else "approved",
         quality_checks=quality_checks,
         processing_time_ms=0,  # Historical record
-        created_at=chunk_record.created_at
+        created_at=cast(datetime, chunk_record.created_at)
     )
 
 
@@ -466,6 +448,10 @@ async def llm_analyze(
 async def run_llm_validation(trace_id: str, record_id: str, text: str, tags: List[str]):
     """Background task for async LLM validation"""
     try:
+        if llm_judge is None:
+            print(f"LLM judge not available for {trace_id}")
+            return
+            
         result = await llm_judge.check_chunk(text, tags)
         
         # Store LLM result in database
@@ -481,7 +467,7 @@ async def run_llm_validation(trace_id: str, record_id: str, text: str, tags: Lis
                 status=result.status.value,
                 confidence_score=result.confidence_score,
                 failure_reason=result.failure_reason,
-                check_metadata=result.check_metadata,
+                check_metadata_json=result.check_metadata,
                 processing_time_ms=result.check_metadata.get('processing_time_ms', 0) if result.check_metadata else 0
             )
             db.add(llm_check)

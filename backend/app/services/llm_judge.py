@@ -23,8 +23,8 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 try:
-    import anthropic
-    from anthropic import AsyncAnthropic
+    import anthropic  # type: ignore
+    from anthropic import AsyncAnthropic  # type: ignore
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     anthropic = None
@@ -115,13 +115,13 @@ class LLMJudge:
             masked_text = mask_pii_text(text)
             
             # Check if content is too long/short for meaningful analysis
-            if len(masked_text.strip()) < 50:
+            if len(masked_text.strip()) < self.settings.llm_fallback_min_text_length:
                 return QualityCheckResult(
                     check_name="llm_semantic_validation",
                     status=FlagStatus.PASS,
-                    confidence_score=0.5,
+                    confidence_score=self.settings.llm_fallback_confidence_low,
                     failure_reason="Text too short for semantic analysis",
-                    metadata={"skipped_reason": "text_too_short", "text_length": len(text)}
+                    check_metadata={"skipped_reason": "text_too_short", "text_length": len(text)}
                 )
             
             # Run LLM validation with proper model selection
@@ -156,7 +156,7 @@ class LLMJudge:
         
         try:
             # Use a more compatible model and remove response_format for better compatibility
-            model = "gpt-3.5-turbo" if "gpt-4" in self.settings.llm_model else self.settings.llm_model
+            model = "gpt-3.5-turbo" if "gpt-4" in getattr(self.settings, 'openai_model', 'gpt-3.5-turbo') else getattr(self.settings, 'openai_model', 'gpt-3.5-turbo')
             
             response = await self.openai_client.chat.completions.create(
                 model=model,
@@ -164,29 +164,35 @@ class LLMJudge:
                     {"role": "system", "content": self._get_system_prompt()},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=self.settings.llm_max_tokens,
-                temperature=self.settings.llm_temperature
+                max_tokens=self.settings.openai_max_tokens,
+                temperature=self.settings.openai_temperature
                 # Removed response_format for better compatibility
             )
             
             # Track token usage and cost
             usage = response.usage
-            self.total_tokens_used += usage.total_tokens
-            self.request_count += 1
-            
-            # Estimate cost (GPT-3.5 pricing as of 2024)
-            input_cost = usage.prompt_tokens * 0.0000015  # $0.0015/1K tokens
-            output_cost = usage.completion_tokens * 0.000002  # $0.002/1K tokens
-            request_cost = input_cost + output_cost
-            self.total_cost_usd += request_cost
+            if usage:
+                self.total_tokens_used += usage.total_tokens
+                self.request_count += 1
+                
+                # Estimate cost (GPT-3.5 pricing as of 2024)
+                input_cost = usage.prompt_tokens * 0.0000015  # $0.0015/1K tokens
+                output_cost = usage.completion_tokens * 0.000002  # $0.002/1K tokens
+                request_cost = input_cost + output_cost
+                self.total_cost_usd += request_cost
+            else:
+                request_cost = 0.0
             
             # Parse response
             content = response.choices[0].message.content
-            result_data = json.loads(content)
+            if content:
+                result_data = json.loads(content)
+            else:
+                raise Exception("Empty response from OpenAI")
             
             return self._parse_llm_response(result_data, {
                 "model": model,
-                "tokens_used": usage.total_tokens,
+                "tokens_used": usage.total_tokens if usage else 0,
                 "cost_usd": request_cost,
                 "provider": "openai"
             })
@@ -204,8 +210,8 @@ class LLMJudge:
         try:
             response = await self.anthropic_client.messages.create(
                 model="claude-3-haiku-20240307",  # Fastest, cheapest model
-                max_tokens=self.settings.llm_max_tokens,
-                temperature=self.settings.llm_temperature,
+                max_tokens=self.settings.anthropic_max_tokens,
+                temperature=getattr(self.settings, 'anthropic_temperature', 0.1),
                 system=self._get_system_prompt(),
                 messages=[{"role": "user", "content": prompt}]
             )
@@ -221,7 +227,10 @@ class LLMJudge:
             
             # Parse response
             content = response.content[0].text
-            result_data = json.loads(content)
+            if content:
+                result_data = json.loads(content)
+            else:
+                raise Exception("Empty response from Anthropic")
             
             return self._parse_llm_response(result_data, {
                 "model": "claude-3-haiku",
@@ -296,7 +305,7 @@ Quality standards:
         
         try:
             overall = response_data.get("overall_assessment", "").upper()
-            confidence = float(response_data.get("confidence", 0.5))
+            confidence = float(response_data.get("confidence", self.settings.llm_default_confidence))
             issues = response_data.get("issues", [])
             reasoning = response_data.get("reasoning", "")
             
@@ -425,18 +434,18 @@ Quality standards:
         # Simple scoring
         match_ratio = matched_tags / len(tags) if tags else 0
         
-        # More lenient fallback - only fail if clearly problematic
-        if match_ratio < 0.05 and len(tags) > 1:  # Reduced threshold from 0.1 to 0.05
+        # Use configurable thresholds for fallback
+        if match_ratio < self.settings.llm_fallback_match_ratio_threshold and len(tags) > 1:
             status = FlagStatus.FAIL
-            confidence = 0.7  # Increased confidence for fallback
+            confidence = self.settings.llm_fallback_confidence_high
             failure_reason = f"Fallback check: Low tag-text overlap ({match_ratio:.1%}). Consider improving tag relevance."
-        elif match_ratio < 0.2 and len(tags) > 2:
-            status = FlagStatus.FAIL  # Use FAIL instead of WARNING for compatibility
-            confidence = 0.6
+        elif match_ratio < self.settings.llm_fallback_moderate_threshold and len(tags) > 2:
+            status = FlagStatus.FAIL
+            confidence = self.settings.llm_fallback_confidence_moderate
             failure_reason = f"Fallback check: Moderate tag-text overlap ({match_ratio:.1%}). Tags could be more specific."
         else:
             status = FlagStatus.PASS
-            confidence = 0.5  # Moderate confidence for fallback
+            confidence = self.settings.llm_fallback_confidence_low
             failure_reason = None
         
         return QualityCheckResult(
@@ -525,7 +534,7 @@ Quality standards:
         self.failure_count = 0
         self.last_failure_time = None
     
-    async def generate_tag_suggestions(self, content: str, current_tags: List[str] = None) -> Dict[str, Any]:
+    async def generate_tag_suggestions(self, content: str, current_tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Generate tag suggestions using real OpenAI API
         Filters out stopwords and existing tags
@@ -615,15 +624,21 @@ Example bad tags: "document", "information", "content", "the", "and"
             
             # Try to parse as JSON, fallback to text parsing if needed
             try:
-                result_data = json.loads(content_response)
+                if content_response:
+                    result_data = json.loads(content_response)
+                else:
+                    raise Exception("Empty response from OpenAI")
             except json.JSONDecodeError:
                 # If JSON parsing fails, try to extract suggestions from text
-                result_data = self._parse_tag_suggestions_from_text(content_response)
+                if content_response:
+                    result_data = self._parse_tag_suggestions_from_text(content_response)
+                else:
+                    raise Exception("Empty response from OpenAI")
             
             # Extract suggestions and filter them
             raw_suggestions = result_data.get("suggestions", [])
             reasoning = result_data.get("reasoning", "")
-            confidence = result_data.get("confidence", 0.7)
+            confidence = result_data.get("confidence", self.settings.llm_default_confidence)
             
             # Filter suggestions to avoid stopwords and existing tags
             filtered_suggestions = []

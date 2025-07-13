@@ -1,6 +1,6 @@
 """
 Configuration management for Indexing QA Observability Tool
-Simplified version for compatibility
+Centralized configuration with all thresholds and settings
 """
 
 import os
@@ -56,7 +56,8 @@ class Settings(BaseSettings):
     azure_tenant_id: Optional[str] = None
     
     # LLM Configuration
-    openai_api_key: str = "your-openai-api-key-here"
+    openai_api_key: str ="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"
+
     openai_model: str = "gpt-3.5-turbo"
     openai_max_tokens: int = 1000
     openai_temperature: float = 0.1
@@ -65,18 +66,30 @@ class Settings(BaseSettings):
     anthropic_api_key: str = "your-anthropic-api-key-here"
     anthropic_model: str = "claude-3-sonnet-20240229"
     anthropic_max_tokens: int = 1000
+    anthropic_temperature: float = 0.1
     anthropic_rate_limit_requests_per_minute: int = 50
-    
-    # LLM Model Settings
-    llm_model: str = "gpt-3.5-turbo"
-    llm_max_tokens: int = 1000
-    llm_temperature: float = 0.1
     
     # Quality Thresholds
     quality_pass_rate_threshold: float = 95.0
-    quality_confidence_threshold: float = 0.8
+    quality_confidence_threshold: float = 0.9
     rules_engine_failure_rate_threshold: float = 10.0
     dead_letter_backlog_threshold: int = 100
+    
+    # Main Approval Threshold (MOST IMPORTANT)
+    approval_quality_score_threshold: float = 90.0  # Records with quality_score >= this are approved
+    
+    # Enhanced Quality Engine Thresholds
+    semantic_relevance_threshold: float = 0.4  # Minimum semantic similarity score
+    domain_relevance_threshold: float = 0.4    # Minimum domain relevance score
+    tag_specificity_threshold: float = 0.5     # Minimum tag specificity score
+    context_coherence_threshold: float = 0.3   # Minimum tag coherence score
+    tag_text_relevance_threshold: float = 0.3  # Minimum tag-text relevance score
+    
+    # Text Quality Thresholds
+    min_text_length: int = 10
+    max_text_length: int = 50000
+    min_meaningful_words: int = 3
+    max_duplicate_content_per_hour: int = 5
     
     # Cost Management
     cost_budget_daily_limit: float = 100.0
@@ -115,8 +128,6 @@ class Settings(BaseSettings):
     rules_engine_batch_size: int = 1000
     rules_engine_max_workers: int = 4
     rules_stopwords_file: str = "stopwords.txt"
-    rules_min_chunk_length: int = 10
-    rules_max_chunk_length: int = 10000
     rules_max_tags_per_chunk: int = 20
     
     # LLM Judge Configuration
@@ -128,7 +139,16 @@ class Settings(BaseSettings):
     llm_judge_retry_attempts: int = 3
     llm_judge_backoff_factor: float = 2.0
     llm_judge_pii_mask_enabled: bool = True
-    llm_confidence_threshold: float = 0.6  # Threshold for LLM semantic validation
+    llm_confidence_threshold: float = 0.95  # Threshold for LLM semantic validation
+    
+    # LLM Judge Fallback Thresholds
+    llm_fallback_min_text_length: int = 50  # Minimum text length for LLM analysis
+    llm_fallback_match_ratio_threshold: float = 0.05  # Minimum tag-text overlap for fallback
+    llm_fallback_moderate_threshold: float = 0.2  # Moderate overlap threshold
+    llm_fallback_confidence_high: float = 0.7  # High confidence for fallback
+    llm_fallback_confidence_moderate: float = 0.6  # Moderate confidence for fallback
+    llm_fallback_confidence_low: float = 0.5  # Low confidence for fallback
+    llm_default_confidence: float = 0.7  # Default confidence when LLM response is unclear
     
     # Feedback Loop Configuration
     feedback_learning_rate: float = 0.1
@@ -148,7 +168,7 @@ class Settings(BaseSettings):
     
     # Security
     api_key_header: str = "X-API-Key"
-    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3003,http://localhost:3004"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004"
     cors_allow_credentials: bool = True
     
     @property

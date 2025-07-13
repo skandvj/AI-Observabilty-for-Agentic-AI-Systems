@@ -4,7 +4,7 @@ Optimized for Azure SQL Database with connection pooling and failover support
 """
 
 import logging
-from typing import Generator
+from typing import Generator, Optional, Dict, Any
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event, text
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Global engine and session factory
-engine = None
-SessionLocal = None
+engine: Optional[Any] = None
+SessionLocal: Optional[Any] = None
 
 
 def create_database_engine():
@@ -64,7 +64,7 @@ def create_database_engine():
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         """Set database-specific connection options"""
-        if "sqlite" in str(engine.url):
+        if engine and "sqlite" in str(engine.url):
             # SQLite optimizations for development
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
@@ -107,6 +107,9 @@ def get_db() -> Generator[Session, None, None]:
     if SessionLocal is None:
         create_session_factory()
     
+    if SessionLocal is None:
+        raise RuntimeError("Failed to create database session factory")
+    
     db = SessionLocal()
     try:
         yield db
@@ -123,6 +126,9 @@ def get_db_context():
     """Context manager for database sessions outside of FastAPI"""
     if SessionLocal is None:
         create_session_factory()
+    
+    if SessionLocal is None:
+        raise RuntimeError("Failed to create database session factory")
     
     db = SessionLocal()
     try:
@@ -221,9 +227,9 @@ def _initialize_default_thresholds(db: Session):
         db.rollback()
 
 
-def check_database_health() -> dict:
+def check_database_health() -> Dict[str, Any]:
     """Comprehensive database health check"""
-    health_status = {
+    health_status: Dict[str, Any] = {
         "status": "unknown",
         "connection": False,
         "tables_exist": False,
@@ -266,9 +272,9 @@ def check_database_health() -> dict:
     return health_status
 
 
-def get_database_metrics() -> dict:
+def get_database_metrics() -> Dict[str, Any]:
     """Get database performance and usage metrics"""
-    metrics = {
+    metrics: Dict[str, Any] = {
         "connection_pool_size": 0,
         "checked_out_connections": 0,
         "overflow_connections": 0,
@@ -296,10 +302,10 @@ def get_database_metrics() -> dict:
 
 def cleanup_old_records(days_to_keep: int = 90):
     """Clean up old records based on retention policy"""
-    from datetime import datetime, timedelta, UTC
-    from models import ChunkRecord, DeadLetterRecord, AlertRecord
+    from datetime import datetime, timedelta, timezone
+    from ..models.models import ChunkRecord, DeadLetterRecord, AlertRecord
     
-    cutoff_date = datetime.now(datetime.UTC) - timedelta(days=days_to_keep)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
     
     try:
         with get_db_context() as db:
@@ -326,7 +332,7 @@ def cleanup_old_records(days_to_keep: int = 90):
         raise
 
 
-def execute_raw_query(query: str, params: dict = None) -> list:
+def execute_raw_query(query: str, params: Optional[Dict[str, Any]] = None) -> list:
     """Execute raw SQL query - use with caution"""
     try:
         engine = create_database_engine()
@@ -363,12 +369,12 @@ def get_current_schema_version() -> str:
         return "unknown"
 
 
-def backup_database(backup_path: str = None):
+def backup_database(backup_path: Optional[str] = None):
     """Create database backup (SQLite only for dev)"""
     if "sqlite" in str(create_database_engine().url):
         import shutil
         import os
-        from datetime import datetime, UTC
+        from datetime import datetime, timezone
         
         db_path = str(create_database_engine().url).replace("sqlite:///", "")
         if not backup_path:

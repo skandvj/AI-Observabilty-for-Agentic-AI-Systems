@@ -21,7 +21,7 @@ from fastapi import Body
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 
 # Import our rules engine
@@ -317,9 +317,12 @@ class ContentIngestRequest(BaseModel):
     content_metadata: Optional[Dict] = None
 
 class RulesCheckRequest(BaseModel):
-    content: str
+    content: str = Field(..., alias="document_text")
     tags: List[str] 
     source_connector: str
+    
+    class Config:
+        allow_population_by_field_name = True
 
 class LLMAnalysisRequest(BaseModel):
     content: str
@@ -414,7 +417,7 @@ def store_record(record_data: Dict):
         record_data.get('trace_id', ''),
         json.dumps(record_data.get('llm_suggestions', [])),
         record_data.get('llm_reasoning'),
-        record_data.get('status', 'pending'),
+        record_data.get('status', 'flagged' if record_data.get('quality_score', 0) < 60 else 'approved'),
         record_data.get('manual_review_status', 'pending'),
         json.dumps(record_data.get('issues', []))
     ))
@@ -1910,11 +1913,13 @@ async def ingest_content(request: ContentIngestRequest):
         # Calculate overall quality score
         overall_score = (rules_engine_score * 0.6 + llm_score * 0.4) * 100
         
-        # Determine status (removed priority)
-        if overall_score >= 90:
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
+        # Determine status using configurable threshold
+        if overall_score >= approval_threshold:
             status = "approved"
-        elif overall_score >= 70:
-            status = "pending"
         else:
             status = "flagged"
         
@@ -2063,7 +2068,7 @@ async def ingest_sharepoint_data(request: SharePointAnswerRequest):
                 },
                 "quality_score": processed_record.quality_score,
                 "quality_checks": processed_record.quality_checks,
-                "status": "approved" if processed_record.quality_score >= 70 else "flagged",
+                "status": "approved" if processed_record.quality_score >= settings.approval_quality_score_threshold else "flagged",
                 "created_at": processed_record.created_at,
                 "processing_time_ms": processed_record.processing_time_ms,
                 "source_type": processed_record.source_type,
@@ -2078,14 +2083,17 @@ async def ingest_sharepoint_data(request: SharePointAnswerRequest):
         avg_quality_score = total_quality_score / len(request.answers) if request.answers else 0
         processing_time = (time.time() - start_time) * 1000
         
+        # Get approval threshold from config
+        settings = get_settings()
+        
         return JSONResponse({
             "success": True,
             "message": f"Successfully processed {len(request.answers)} SharePoint/Jira records",
             "summary": {
                 "total_processed": len(request.answers),
                 "avg_quality_score": round(avg_quality_score, 2),
-                "approved_records": len([r for r in processed_answers if r.quality_score >= 70]),
-                "flagged_records": len([r for r in processed_answers if r.quality_score < 70]),
+                "approved_records": len([r for r in processed_answers if r.quality_score >= settings.approval_quality_score_threshold]),
+                "flagged_records": len([r for r in processed_answers if r.quality_score < settings.approval_quality_score_threshold]),
                 "processing_time_ms": round(processing_time, 2)
             },
             "processed_records": [
@@ -2142,7 +2150,7 @@ async def ingest_elasticsearch_data(request: ElasticsearchDataRequest):
                 },
                 "quality_score": processed_record.quality_score,
                 "quality_checks": processed_record.quality_checks,
-                "status": "approved" if processed_record.quality_score >= 70 else "flagged",
+                "status": "approved" if processed_record.quality_score >= settings.approval_quality_score_threshold else "flagged",
                 "created_at": processed_record.created_at,
                 "processing_time_ms": processed_record.processing_time_ms,
                 "source_type": processed_record.source_type,
@@ -2157,14 +2165,17 @@ async def ingest_elasticsearch_data(request: ElasticsearchDataRequest):
         avg_quality_score = total_quality_score / len(request.hits) if request.hits else 0
         processing_time = (time.time() - start_time) * 1000
         
+        # Get approval threshold from config
+        settings = get_settings()
+        
         return JSONResponse({
             "success": True,
             "message": f"Successfully processed {len(request.hits)} Elasticsearch records",
             "summary": {
                 "total_processed": len(request.hits),
                 "avg_quality_score": round(avg_quality_score, 2),
-                "approved_records": len([r for r in processed_hits if r.quality_score >= 70]),
-                "flagged_records": len([r for r in processed_hits if r.quality_score < 70]),
+                "approved_records": len([r for r in processed_hits if r.quality_score >= settings.approval_quality_score_threshold]),
+                "flagged_records": len([r for r in processed_hits if r.quality_score < settings.approval_quality_score_threshold]),
                 "processing_time_ms": round(processing_time, 2)
             },
             "processed_records": [
@@ -2534,6 +2545,11 @@ async def get_records(
         
         # Transform to expected format
         transformed_records = []
+        
+        # Get approval threshold from config (same as /ingest endpoint)
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         for record in records:
             # Parse quality checks to create issues and calculate confidence values
             quality_checks = record.get('quality_checks', [])
@@ -2579,7 +2595,7 @@ async def get_records(
                 'content': record['content'],
                 'contentPreview': record['content'][:200] + '...' if len(record['content']) > 200 else record['content'],
                 'tags': record['tags'],
-                'status': 'approved' if record['quality_score'] >= 80 else 'flagged' if record['quality_score'] < 60 else 'pending',
+                'status': record.get('status', 'approved' if record['quality_score'] >= approval_threshold else 'flagged'),
                 'qualityScore': record['quality_score'],
                 'confidenceScore': (llm_confidence + rules_engine_confidence) / 2 if llm_confidence > 0 and rules_engine_confidence > 0 else max(llm_confidence, rules_engine_confidence),
                 'llm_confidence': llm_confidence,
@@ -4620,9 +4636,13 @@ class ReviewRequest(BaseModel):
 
 def make_quality_decision(quality_score: float, issues: List[Dict]) -> str:
     """Make binary APPROVED/FLAGGED decision based on quality"""
+    # Get approval threshold from config
+    settings = get_settings()
+    approval_threshold = settings.approval_quality_score_threshold
+    
     critical_issues = [i for i in issues if i.get('severity') == 'critical']
     
-    if quality_score >= 80 and not critical_issues:
+    if quality_score >= approval_threshold and not critical_issues:
         return RecordStatus.APPROVED
     else:
         return RecordStatus.FLAGGED
@@ -4643,14 +4663,18 @@ async def get_approved_records(
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         # Base query for approved records only
         query = """
             SELECT id, record_id, title, content, tags, source_connector, company,
                    quality_score, created_at, content_metadata
             FROM processed_records 
-            WHERE (status = 'approved' OR (status IS NULL AND quality_score >= 80))
+            WHERE (status = 'approved' OR (status IS NULL AND quality_score >= ?))
         """
-        params = []
+        params = [approval_threshold]
         
         # Add filters
         if companies:
@@ -4727,13 +4751,18 @@ async def get_review_queue(priority: Optional[str] = None, assigned_to: Optional
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         # Get flagged records with issues
         query = """
             SELECT id, record_id, title, content, tags, source_connector, company,
                    quality_score, quality_checks, created_at, status, manual_review_status
             FROM processed_records 
-            WHERE (status = 'flagged' OR (status IS NULL AND quality_score < 80))
+            WHERE (status = 'flagged' OR (status IS NULL AND quality_score < ?))
         """
+        params = [approval_threshold]
         
         if assigned_to:
             query += " AND manual_review_status LIKE ?"
@@ -4891,19 +4920,23 @@ async def get_quality_control_dashboard():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         # Status distribution
         cursor.execute("""
             SELECT 
                 CASE 
-                    WHEN status = 'approved' OR (status IS NULL AND quality_score >= 80) THEN 'approved'
-                    WHEN status = 'flagged' OR (status IS NULL AND quality_score < 80) THEN 'flagged'
+                    WHEN status = 'approved' OR (status IS NULL AND quality_score >= ?) THEN 'approved'
+                    WHEN status = 'flagged' OR (status IS NULL AND quality_score < ?) THEN 'flagged'
                     WHEN status = 'rejected' THEN 'rejected'
                     ELSE 'pending'
                 END as computed_status,
                 COUNT(*) as count
             FROM processed_records
             GROUP BY computed_status
-        """)
+        """, (approval_threshold, approval_threshold))
         
         status_distribution = {row[0]: row[1] for row in cursor.fetchall()}
         
@@ -4932,8 +4965,8 @@ async def get_quality_control_dashboard():
         cursor.execute("""
             SELECT quality_checks 
             FROM processed_records 
-            WHERE quality_checks IS NOT NULL AND quality_score < 80
-        """)
+            WHERE quality_checks IS NOT NULL AND quality_score < ?
+        """, (approval_threshold,))
         
         failure_reasons = defaultdict(int)
         for row in cursor.fetchall():
@@ -4989,8 +5022,12 @@ def update_ingest_endpoint_for_binary_decision():
 
 @app.get("/production/approved-simple")
 async def get_approved_records_endpoint(page: int = 1, pageSize: int = 25):
-    """Production Dashboard - Only approved records (score >= 80)"""
+    """Production Dashboard - Only approved records (score >= config threshold)"""
     try:
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -5000,10 +5037,10 @@ async def get_approved_records_endpoint(page: int = 1, pageSize: int = 25):
             SELECT id, record_id, content, tags, source_connector, 
                    quality_score, created_at, content_metadata
             FROM processed_records 
-            WHERE quality_score >= 80
+            WHERE quality_score >= ?
             ORDER BY created_at DESC 
             LIMIT ? OFFSET ?
-        """, (pageSize, offset))
+        """, (approval_threshold, pageSize, offset))
         
         rows = cursor.fetchall()
         
@@ -5020,7 +5057,7 @@ async def get_approved_records_endpoint(page: int = 1, pageSize: int = 25):
                 'status': 'approved'
             })
         
-        cursor.execute("SELECT COUNT(*) FROM processed_records WHERE quality_score >= 80")
+        cursor.execute("SELECT COUNT(*) FROM processed_records WHERE quality_score >= ?", (approval_threshold,))
         total = cursor.fetchone()[0]
         
         conn.close()
@@ -5044,8 +5081,12 @@ async def get_approved_records_endpoint(page: int = 1, pageSize: int = 25):
 
 @app.get("/review/queue-simple")
 async def get_review_queue_endpoint():
-    """Review Queue - Flagged records needing review (score < 80)"""
+    """Review Queue - Flagged records needing review (score < config threshold)"""
     try:
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -5053,9 +5094,9 @@ async def get_review_queue_endpoint():
             SELECT id, record_id, content, tags, source_connector, 
                    quality_score, quality_checks, created_at
             FROM processed_records 
-            WHERE quality_score < 80
+            WHERE quality_score < ?
             ORDER BY quality_score ASC, created_at DESC
-        """)
+        """, (approval_threshold,))
         
         rows = cursor.fetchall()
         
@@ -5108,23 +5149,28 @@ async def get_review_queue_endpoint():
 async def get_quality_control_dashboard_endpoint():
     """Quality Control Center - Analytics and management overview"""
     try:
+        # Get approval threshold from config
+        settings = get_settings()
+        approval_threshold = settings.approval_quality_score_threshold
+        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         cursor.execute("""
             SELECT 
                 CASE 
-                    WHEN quality_score >= 80 THEN 'approved'
-                    WHEN quality_score < 80 THEN 'flagged'
+                    WHEN quality_score >= ? THEN 'approved'
+                    WHEN quality_score < ? THEN 'flagged'
                     ELSE 'unknown'
                 END as status,
                 COUNT(*) as count
             FROM processed_records
             GROUP BY status
-        """)
+        """, (approval_threshold, approval_threshold))
         
         status_distribution = {row[0]: row[1] for row in cursor.fetchall()}
         
+        # Quality trends (last 7 days)
         cursor.execute("""
             SELECT 
                 DATE(created_at) as date,
@@ -5136,19 +5182,21 @@ async def get_quality_control_dashboard_endpoint():
             ORDER BY date
         """)
         
-        quality_trends = []
-        for row in cursor.fetchall():
-            quality_trends.append({
+        quality_trends = [
+            {
                 'date': row[0],
-                'avgQuality': round(row[1], 1) if row[1] else 0,
+                'avgQuality': round(row[1], 1),
                 'totalRecords': row[2]
-            })
+            }
+            for row in cursor.fetchall()
+        ]
         
+        # Top failure reasons
         cursor.execute("""
             SELECT quality_checks 
             FROM processed_records 
-            WHERE quality_checks IS NOT NULL AND quality_score < 80
-        """)
+            WHERE quality_checks IS NOT NULL AND quality_score < ?
+        """, (approval_threshold,))
         
         failure_reasons = defaultdict(int)
         for row in cursor.fetchall():
@@ -5157,23 +5205,16 @@ async def get_quality_control_dashboard_endpoint():
                 for check in checks:
                     if check.get('status') == 'fail':
                         check_name = check.get('check_name', 'unknown')
-                        friendly_names = {
-                            'empty_tags': 'Missing Tags',
-                            'tag_count_validation': 'Tag Count Issues',
-                            'text_quality': 'Text Quality Issues',
-                            'stopwords_detection': 'Generic Tags',
-                            'spam_pattern_detection': 'Spam/Test Content',
-                            'duplicate_content_detection': 'Duplicate Content',
-                            'tag_text_relevance': 'Tag-Content Mismatch'
-                        }
-                        friendly_name = friendly_names.get(check_name, check_name.replace('_', ' ').title())
-                        failure_reasons[friendly_name] += 1
+                        failure_reasons[check_name] += 1
             except:
                 continue
         
-        top_failures = sorted(failure_reasons.items(), key=lambda x: x[1], reverse=True)[:10]
-        top_failures = [{'reason': reason, 'count': count} for reason, count in top_failures]
+        top_failures = [
+            {'reason': reason, 'count': count}
+            for reason, count in sorted(failure_reasons.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
         
+        # System performance
         total_records = sum(status_distribution.values())
         approval_rate = (status_distribution.get('approved', 0) / total_records * 100) if total_records > 0 else 0
         
@@ -5186,12 +5227,13 @@ async def get_quality_control_dashboard_endpoint():
             'systemPerformance': {
                 'totalRecords': total_records,
                 'approvalRate': round(approval_rate, 1),
+                'avgQualityScore': sum(trend['avgQuality'] * trend['totalRecords'] for trend in quality_trends) / sum(trend['totalRecords'] for trend in quality_trends) if quality_trends else 0,
                 'recordsNeedingReview': status_distribution.get('flagged', 0)
             }
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch quality control dashboard: {str(e)}")
 
 @app.post("/production/override/{record_id}")
 async def override_approved_record(record_id: str, payload: dict = Body(...)):

@@ -123,9 +123,11 @@ class ChunkAnalysisResponse(BaseModel):
     trace_id: str
     record_id: str
     overall_status: FlagStatus
+    status: str  # 'flagged' or 'approved'
     quality_checks: List[QualityCheckResult]
     processing_time_ms: float
     created_at: datetime
+    content_metadata: Optional[Dict[str, Any]] = None
 
 
 class ReviewerFeedback(BaseModel):

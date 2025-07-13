@@ -163,33 +163,24 @@ class RulesEngine:
     
     def _initialize_thresholds(self):
         """Set up dynamic thresholds from config and global threshold system"""
-        # Try to get dynamic thresholds first, fallback to settings
-        try:
-            from run_local import get_threshold_value
-            self.thresholds = {
-                'min_tag_count': get_threshold_value("min_tag_count") or self.settings.min_tag_count,
-                'max_tag_count': get_threshold_value("max_tag_count") or self.settings.max_tag_count,
-                'spam_threshold': get_threshold_value("spam_threshold") or self.settings.spam_threshold,
-                'stopword_threshold': get_threshold_value("stopword_threshold") or self.settings.stopword_threshold,
-                'min_text_length': 10,
-                'max_text_length': 50000,
-                'min_meaningful_words': 3,
-                'max_duplicate_content_per_hour': 5,
-                'tag_text_relevance_threshold': 0.3,
-            }
-        except:
-            # Fallback to settings if dynamic thresholds not available
-            self.thresholds = {
-                'min_tag_count': self.settings.min_tag_count,
-                'max_tag_count': self.settings.max_tag_count,
-                'spam_threshold': self.settings.spam_threshold,
-                'stopword_threshold': self.settings.stopword_threshold,
-                'min_text_length': 10,
-                'max_text_length': 50000,
-                'min_meaningful_words': 3,
-                'max_duplicate_content_per_hour': 5,
-                'tag_text_relevance_threshold': 0.3,
-            }
+        # Get thresholds from settings
+        settings = get_settings()
+        
+        self.thresholds = {
+            'min_tag_count': settings.min_tag_count,
+            'max_tag_count': settings.max_tag_count,
+            'spam_threshold': settings.spam_threshold,
+            'stopword_threshold': settings.stopword_threshold,
+            'min_text_length': settings.min_text_length,
+            'max_text_length': settings.max_text_length,
+            'min_meaningful_words': settings.min_meaningful_words,
+            'max_duplicate_content_per_hour': settings.max_duplicate_content_per_hour,
+            'tag_text_relevance_threshold': settings.tag_text_relevance_threshold,
+            'semantic_relevance_threshold': settings.semantic_relevance_threshold,
+            'domain_relevance_threshold': settings.domain_relevance_threshold,
+            'tag_specificity_threshold': settings.tag_specificity_threshold,
+            'context_coherence_threshold': settings.context_coherence_threshold,
+        }
     
     def check_chunk(self, chunk: ChunkIngestRequest) -> List[QualityCheckResult]:
         """

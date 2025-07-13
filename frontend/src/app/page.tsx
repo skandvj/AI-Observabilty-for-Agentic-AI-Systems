@@ -132,9 +132,8 @@ export default function DashboardPage() {
     try {
       const response = await apiClient.getQualityRecords(filters, pagination);
       let all = response.data || [];
-      // Map all non-approved statuses to 'flagged' for display
-      const mapped = all.map(r => ({ ...r, status: r.status === 'approved' ? 'approved' : 'flagged' }));
-      setRecords(mapped);
+      // Use actual status from backend instead of artificial mapping
+      setRecords(all);
     } catch (err) {
       console.error('Error fetching records:', err);
       setRecords([]);
