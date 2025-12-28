@@ -1,4 +1,4 @@
-# Indexing QA Observability Tool
+# AI Observability Tool for Agentic AI Systems
 
 A comprehensive quality assurance system for document indexing with real-time validation, LLM-powered semantic analysis, and advanced quality scoring.
 
