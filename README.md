@@ -65,7 +65,8 @@ npm run dev
 - **Frontend**: Next.js with React dashboard
 - **Quality Engine**: Rules-based + LLM semantic validation
 - **Real-time Processing**: Immediate quality assessment
-- ![Architecture](Observabilty Architecture.png)
+
+![Architecture](observability_architecture.png)
 
 
 ### Key Features
